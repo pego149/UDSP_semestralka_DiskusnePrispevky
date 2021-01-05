@@ -2,18 +2,21 @@
 <project version="4">
   <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
-      <paths name="WSL-ubuntu (78c33a6a-5876-42f7-adc7-acdc60c03b03)">
+      <paths name="frios2.fri.uniza.sk (645cd8c9-d81e-44e3-92f7-bb9a6525992b)">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="frios2.fri.uniza.sk (8e4b892f-54ef-4f4c-b768-03cbed180572)">
+      <paths name="frios2.fri.uniza.sk NEW (bcf8795c-8a6b-4bd1-917c-cd6bba3463d4)">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/tmp/tmp.VEmfQpyi0x" local="$PROJECT_DIR$" />
           </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>
