@@ -13,30 +13,39 @@
 #define CONN_LIMIT 32
 
 // Global variables
+int counter;
 int serverSocket = 0, clientSocket = 0;
-ClientList *root, *now;
+CLIENTNODE *rootClient, *nowClient;
+POSTNODE *rootPost, *nowPost;
+char cas[OTHER_LENGTH];
 
 void catch_ctrl_c_and_exit(int sig) {
-    ClientList *tmp;
-    while (root != NULL) {
-        printf("\nClose socketfd: %d\n", root->data);
-        close(root->data); // close all socket include server_sockfd
-        tmp = root;
-        root = root->link;
+    printf("\n");
+    POSTNODE *tmpPost;
+    while (rootPost != NULL) {
+        printf("%s: Mažem post s id: %ld\n", toDate(cas,time(NULL)), rootPost->id);
+        tmpPost = rootPost;
+        rootPost = rootPost->next;
+        free(tmpPost);
+    }
+
+    CLIENTNODE *tmp;
+    while (rootClient != NULL) {
+        printf("%s: Zatváram socket: %d\n", toDate(cas,time(NULL)), rootClient->sock);
+        close(rootClient->sock); // close all socket include server_sockfd
+        tmp = rootClient;
+        rootClient = rootClient->next;
         free(tmp);
     }
-    printf("Bye\n");
+    printf("%s: Zatváram program...\n", toDate(cas,time(NULL)));
     exit(EXIT_SUCCESS);
 }
 
-void send_to_all_clients(ClientList *np, char tmp_buffer[]) {
-    ClientList *tmp = root->link;
+void send_to_all_clients(char tmp_buffer[]) {
+    CLIENTNODE *tmp = rootClient->next;
     while (tmp != NULL) {
-        if (np->data != tmp->data) { // all clients except itself.
-            printf("Send to sockfd %d: \"%s\" \n", tmp->data, tmp_buffer);
-            send(tmp->data, tmp_buffer, BUFFER_LENGTH, 0);
-        }
-        tmp = tmp->link;
+        send(tmp->sock, tmp_buffer, BUFFER_LENGTH, 0);
+        tmp = tmp->next;
     }
 }
 
@@ -45,70 +54,100 @@ void client_handler(void *p_client) {
     char nickname[OTHER_LENGTH] = {};
     char recv_buffer[BUFFER_LENGTH] = {};
     char send_buffer[BUFFER_LENGTH] = {};
-    ClientList *np = (ClientList *)p_client;
+    CLIENTNODE *np = (CLIENTNODE *)p_client;
 
-    // Naming
-    if (recv(np->data, nickname, OTHER_LENGTH, 0) <= 0 || strlen(nickname) < 2 || strlen(nickname) >= OTHER_LENGTH-1) {
-        printf("%s didn't input name.\n", np->ip);
+    // Prihlasenie
+    if (recv(np->sock, nickname, OTHER_LENGTH, 0) <= 0 || strlen(nickname) < 2 || strlen(nickname) >= OTHER_LENGTH-1) {
+        printf("%s: Používateľ s IP:%s nemá používateľské meno.\n", toDate(cas,time(NULL)), np->ip);
         leave_flag = 1;
     } else {
         strncpy(np->name, nickname, OTHER_LENGTH);
-        printf("%s(%s)(%d) join the chatroom.\n", np->name, np->ip, np->data);
-        sprintf(send_buffer, "%s(%s) join the chatroom.", np->name, np->ip);
-        send_to_all_clients(np, send_buffer);
+        printf("%s: Používateľ s IP:%s (%s) bol prihlásený na sockete %d.\n", toDate(cas,time(NULL)), np->ip, np->name, np->sock);
+        char message[BUFFER_LENGTH];
+        sprintf(message, "Používateľ s IP:%s bol prihlásený.", np->ip);
+        pthread_mutex_lock(np->mutex);
+        POSTNODE *post = newPostNode(np->name, message, time(NULL), nowPost->id + 1);
+        post->prev = nowPost;
+        nowPost->next = post;
+        nowPost = post;
+        pthread_mutex_unlock(np->mutex);
+        getOutput(rootPost, send_buffer);
+        send_to_all_clients(send_buffer);
     }
 
-    // Conversation
+    // Konverzacia
     while (1) {
         if (leave_flag) {
             break;
         }
-        int receive = recv(np->data, recv_buffer, BUFFER_LENGTH, 0);
+        int receive = recv(np->sock, recv_buffer, BUFFER_LENGTH, 0);
         if (receive > 0) {
             if (strlen(recv_buffer) == 0) {
                 continue;
             }
-            sprintf(send_buffer, "%s：%s from %s", np->name, recv_buffer, np->ip);
+            long ts = time(NULL);
+            printf("%s: Prijatá správa zo socketu %d: (IP:%s %s: %s )\n", toDate(cas, ts),  np->sock, np->ip, np->name, recv_buffer);
+            char command[3];
+            strcpy(command, strtok(recv_buffer, ":"));
+            if (strcmp(command, "add") == 0) {
+                char message[BUFFER_LENGTH];
+                strcpy(message, strtok(NULL, "\0"));
+                pthread_mutex_lock(np->mutex);
+                // Append linked list for post
+                POSTNODE *post = newPostNode(np->name, message, ts, nowPost->id + 1);
+                post->prev = nowPost;
+                nowPost->next = post;
+                nowPost = post;
+                pthread_mutex_unlock(np->mutex);
+            } else if (strcmp(command, "del") == 0) {
+                char message[BUFFER_LENGTH];
+                strcpy(message, strtok(NULL, "\0"));
+                long id = atol(message);
+                removePostNode(rootPost, id);
+            }
+            getOutput(rootPost, send_buffer);
         } else if (receive == 0 || strcmp(recv_buffer, "exit") == 0) {
-            printf("%s(%s)(%d) leave the chatroom.\n", np->name, np->ip, np->data);
-            sprintf(send_buffer, "%s(%s) leave the chatroom.", np->name, np->ip);
+            printf("%s: Používateľ s IP:%s (%s) bol odhlásený zo socketu %d.\n", toDate(cas,time(NULL)), np->name, np->ip, np->sock);
+            sprintf(send_buffer, "%s: Používateľ %s s IP:%s bol odhlásený.\n", toDate(cas,time(NULL)), np->name, np->ip);
             leave_flag = 1;
         } else {
-            printf("Fatal Error: -1\n");
+            printf("%s: Fatal Error: -1\n", toDate(cas,time(NULL)));
             leave_flag = 1;
         }
-        send_to_all_clients(np, send_buffer);
+        send_to_all_clients(send_buffer);
     }
 
     // Remove Node
-    close(np->data);
-    if (np == now) { // remove an edge node
-        now = np->prev;
-        now->link = NULL;
+    close(np->sock);
+    if (np == nowClient) { // remove an edge node
+        nowClient = np->prev;
+        nowClient->next = NULL;
     } else { // remove a middle node
-        np->prev->link = np->link;
-        np->link->prev = np->prev;
+        np->prev->next = np->next;
+        np->next->prev = np->prev;
     }
     free(np);
 }
 
 int main(int argc, char* argv[]) {
     signal(SIGINT, catch_ctrl_c_and_exit);
-    if (argc != 3) {
-        printError("Sever je nutne spustit s nasledujucimi argumentmi: port pouzivatel.");
+    if (argc != 2) {
+        printf("%s: Sever je nutne spustit s nasledujucimi argumentmi: port.\n", toDate(cas,time(NULL)));
+        exit(EXIT_FAILURE);
     }
     int port = atoi(argv[1]);
     if (port <= 0) {
-        printError("Port musi byt cele cislo vacsie ako 0.");
+        printf("%s: Port musi byt cele cislo vacsie ako 0.\n", toDate(cas,time(NULL)));
+        exit(EXIT_FAILURE);
     }
-    char *userName = argv[2];
 
     //vytvorenie TCP socketu <sys/socket.h>
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket < 0) {
-        printError("Chyba: socket.");
+        printf("%s: Chyba: socket.\n", toDate(cas,time(NULL)));
+        exit(EXIT_FAILURE);
     } else {
-        printf("Socket vytvorený.\n");
+        printf("%s: Socket vytvorený.\n", toDate(cas,time(NULL)));
     }
 
     //definovanie adresy servera <arpa/inet.h>
@@ -119,72 +158,49 @@ int main(int argc, char* argv[]) {
 
     //prepojenie adresy servera so socketom <sys/socket.h>
     if (bind(serverSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0) {
-        printError("Chyba: bind.");
+        printf("%s: Chyba: bind.\n", toDate(cas,time(NULL)));
         exit(EXIT_FAILURE);
     } else {
-        printf("Bind na adresu %s a port %d hotovo.\n", inet_ntoa(serverAddress.sin_addr),ntohs(serverAddress.sin_port));
+        printf("%s: Bind na adresu %s a port %d hotovo.\n", toDate(cas,time(NULL)), inet_ntoa(serverAddress.sin_addr),ntohs(serverAddress.sin_port));
     }
 
     //server bude prijimat nove spojenia cez socket serverSocket <sys/socket.h>
-    if (listen(serverSocket, CONN_SIZE) < 0) {
-        printError("Chyba: listen.");
+    if (listen(serverSocket, CONN_LIMIT) < 0) {
+        printf("%s: Chyba: listen.", toDate(cas,time(NULL)));
         exit(EXIT_FAILURE);
     } else {
-        printf("Čakám na pripojenie od klientov...\n");
+        printf("%s: Čakám na pripojenie od klientov...\n", toDate(cas,time(NULL)));
     }
 
     // Initial linked list for clients
-    root = newNode(serverSocket, inet_ntoa(serverAddress.sin_addr));
-    now = root;
+    pthread_mutex_t mutex;
+    pthread_mutex_init(&mutex, NULL);
+    rootClient = newClientNode(serverSocket, inet_ntoa(serverAddress.sin_addr), &mutex);
+    nowClient = rootClient;
 
-    //server caka na pripojenie klienta <sys/socket.h>
+    // Initial linked list for posts
+    long ts = time(NULL);
+    rootPost = newPostNode("server", "Miestnosť vytvorená.", ts, 0);
+    nowPost = rootPost;
+
+    //server caka na pripojenie klientov <sys/socket.h>
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLength = sizeof(clientAddress);
+    int e = 0; //vymazat
     while(1) {
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientAddressLength);
-        printf("Klient pripojený (%s:%d)\n",inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
+        printf("%s: Klient pripojený (%s:%d)\n", toDate(cas,time(NULL)), inet_ntoa(clientAddress.sin_addr), ntohs(clientAddress.sin_port));
         // Append linked list for clients
-        ClientList *c = newNode(clientSocket, inet_ntoa(clientAddress.sin_addr));
-        c->prev = now;
-        now->link = c;
-        now = c;
+        CLIENTNODE *c = newClientNode(clientSocket, inet_ntoa(clientAddress.sin_addr), &mutex);
+        c->prev = nowClient;
+        nowClient->next = c;
+        nowClient = c;
 
-        pthread_t id;
-        if (pthread_create(&id, NULL, (void *)client_handler, (void *)c) != 0) {
-            perror("Create pthread error!\n");
+        pthread_t thr;
+        if (pthread_create(&thr, NULL, (void *)client_handler, (void *)c) != 0) {
+            printf("%s: Create pthread error!\n", toDate(cas,time(NULL)));
             exit(EXIT_FAILURE);
         }
+        pthread_detach(thr);
     }
-
-    if (clientSocket < 0)
-    {
-        printError("Chyba: accept.");
-        exit(EXIT_FAILURE);
-    }
-
-    //uzavretie pasivneho socketu <unistd.h>
-    /*close(serverSocket);
-    if (clientSocket < 0) {
-        printError("Chyba - accept.");
-    }*/
-
-    //inicializacia dat zdielanych medzi vlaknami
-    /*DATA data;
-    data_init(&data, userName, clientSocket);
-
-    //vytvorenie vlakna pre zapisovanie dat do socketu <pthread.h>
-    pthread_t thread;
-    pthread_create(&thread, NULL, data_writeData, (void *)&data);
-
-    //v hlavnom vlakne sa bude vykonavat citanie dat zo socketu
-    data_readData((void *)&data);
-
-    //pockame na skoncenie zapisovacieho vlakna <pthread.h>
-    pthread_join(thread, NULL);
-    data_destroy(&data);*/
-
-    //uzavretie socketu klienta <unistd.h>
-    close(clientSocket);
-
-    return (EXIT_SUCCESS);
 }

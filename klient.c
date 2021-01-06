@@ -39,8 +39,10 @@ void recv_msg_handler() {
 }
 
 void send_msg_handler() {
+    char command[BUFFER_LENGTH] = {};
     char message[BUFFER_LENGTH] = {};
     while (1) {
+        strcpy(command, "add:");
         str_overwrite_stdout();
         while (fgets(message, BUFFER_LENGTH, stdin) != NULL) {
             str_trim_lf(message, BUFFER_LENGTH);
@@ -50,7 +52,7 @@ void send_msg_handler() {
                 break;
             }
         }
-        send(sock, message, BUFFER_LENGTH, 0);
+        send(sock, strcat(command, message), BUFFER_LENGTH, 0);
         if (strcmp(message, "exit") == 0) {
             break;
         }
@@ -61,17 +63,20 @@ void send_msg_handler() {
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
-        printError("Klienta je nutne spustit s nasledujucimi argumentmi: adresa port.");
+        printf("Klienta je nutne spustit s nasledujucimi argumentmi: adresa port.");
+        exit(EXIT_FAILURE);
     }
 
     //ziskanie adresy a portu servera <netdb.h>
     struct hostent *server = gethostbyname(argv[1]);
     if (server == NULL) {
-        printError("Server neexistuje.");
+        printf("Server neexistuje.");
+        exit(EXIT_FAILURE);
     }
     int port = atoi(argv[2]);
     if (port <= 0) {
-        printError("Port musi byt cele cislo vacsie ako 0.");
+        printf("Port musi byt cele cislo vacsie ako 0.");
+        exit(EXIT_FAILURE);
     }
 
     char username[OTHER_LENGTH];
@@ -108,7 +113,8 @@ int main(int argc, char *argv[]) {
                 //vytvorenie socketu <sys/socket.h>
                 sock = socket(AF_INET, SOCK_STREAM, 0);
                 if (sock < 0) {
-                    printError("Chyba - socket.");
+                    printf("Chyba: socket.");
+                    exit(EXIT_FAILURE);
                 }
 
                 //definovanie adresy servera <arpa/inet.h>
@@ -119,7 +125,8 @@ int main(int argc, char *argv[]) {
                 serverAddress.sin_port = htons(port);
 
                 if (connect(sock,(struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0) {
-                    printError("Chyba - connect.");
+                    printf("Chyba: connect.");
+                    exit(EXIT_FAILURE);
                 } else {
                     printf("Úspešne pripojené k: %s:%d\n", inet_ntoa(serverAddress.sin_addr), ntohs(serverAddress.sin_port));
                 }
