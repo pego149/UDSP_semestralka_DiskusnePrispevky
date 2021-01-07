@@ -3,7 +3,7 @@
 
 #include <pthread.h>
 
-#define OTHER_LENGTH 10
+#define OTHER_LENGTH 20
 #define BUFFER_LENGTH 4096
 
 char *toDate(char* buf, long timestamp);

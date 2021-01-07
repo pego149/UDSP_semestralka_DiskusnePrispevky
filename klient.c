@@ -12,15 +12,19 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <bits/types/sig_atomic_t.h>
 #include <signal.h>
 
 // Global variables
 volatile sig_atomic_t flag = 0;
 int sock = 0;
+bool privilege = false;
 
 void catch_ctrl_c_and_exit(int sig) {
     flag = 1;
+}
+
+void catch_ctrl_4_and_menu(int sig) {
+    printf("Stlacila som ctrl 4");
 }
 
 void recv_msg_handler() {
@@ -52,14 +56,18 @@ void send_msg_handler() {
                 break;
             }
         }
-        send(sock, strcat(command, message), BUFFER_LENGTH, 0);
         if (strcmp(message, "exit") == 0) {
             break;
+        }
+
+        if(strncmp(message, "del:", 4) == 0 && privilege) {
+            send(sock, message, BUFFER_LENGTH, 0);
+        } else {
+            send(sock, strcat(command, message), BUFFER_LENGTH, 0);
         }
     }
     catch_ctrl_c_and_exit(2);
 }
-
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -81,13 +89,12 @@ int main(int argc, char *argv[]) {
 
     char username[OTHER_LENGTH];
     char password[OTHER_LENGTH];
-    bool privilege = false;
     int mainOrQuit = 0;
     int choice = 0;
     bool loggedIn = false;
 
     while (1) {
-        printf("1 - Main menu\n2 - Quit");
+        printf("1 - Main menu\n2 - Quit\n");
         scanf("%d", &mainOrQuit);
         switch (mainOrQuit) {
 
@@ -100,15 +107,16 @@ int main(int argc, char *argv[]) {
                 }
                 if (strncmp(username, "Admin", OTHER_LENGTH) == 0) {
                     printf("Password:");
-                    fgets(password, OTHER_LENGTH, stdin);
-                    if (strncmp(username, "jancisima", OTHER_LENGTH) == 0) {
+                    scanf("%s", password);
+                    if (strncmp(password, "jancisima", OTHER_LENGTH) == 0) {
                         privilege = true;
                     } else {
-                        printf("Zle heslo, try again n00b!");
+                        printf("Zle heslo, try again n00b!\n");
                         break;
                     }
                 }
                 signal(SIGINT, catch_ctrl_c_and_exit);
+                signal(SIGQUIT, catch_ctrl_4_and_menu);
 
                 //vytvorenie socketu <sys/socket.h>
                 sock = socket(AF_INET, SOCK_STREAM, 0);
