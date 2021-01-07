@@ -19,45 +19,6 @@ typedef struct postNode {
     struct postNode* next;
 } POSTNODE;
 
-POSTNODE *newPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id) {
-    POSTNODE *np = (POSTNODE *)malloc(sizeof(POSTNODE));
-    strncpy(np->userName, userName, OTHER_LENGTH + 1);
-    strncpy(np->message, message, BUFFER_LENGTH + 1);
-    np->prev = NULL;
-    np->next = NULL;
-    np->timestamp = timestamp;
-    np->id = id;
-    return np;
-}
-
-void getOutput(POSTNODE *root, char buffer[]) {
-    bzero(buffer, BUFFER_LENGTH);
-    char oneline[BUFFER_LENGTH];
-    POSTNODE *tmpPost = root;
-    while (tmpPost != NULL) {
-        sprintf(oneline, "%ld:%ld:%s:%s\n",tmpPost->timestamp, tmpPost->id, tmpPost->userName, tmpPost->message);
-        strcat(buffer, oneline);
-        tmpPost = tmpPost->next;
-    }
-}
-
-bool removePostNode(POSTNODE *root, int id) {
-    POSTNODE *np = root;
-    while (np != NULL) {
-        if (np->id == id && np->next == NULL) { // remove an edge node
-            free(np);
-            np = NULL;
-        } else if (np->id == id) {
-            np->prev->next = np->next;
-            np->next->prev = np->prev;
-            free(np);
-            np = NULL;
-        }
-        np = np->next;
-    }
-    return false;
-}
-
 typedef struct ClientNode {
     int sock;
     struct ClientNode* prev;
@@ -67,14 +28,14 @@ typedef struct ClientNode {
     pthread_mutex_t *mutex;
 } CLIENTNODE;
 
-CLIENTNODE *newClientNode(int sock, char* ip, pthread_mutex_t *mutex) {
-    CLIENTNODE *np = (CLIENTNODE *)malloc(sizeof(CLIENTNODE));
-    np->sock = sock;
-    np->prev = NULL;
-    np->next = NULL;
-    np->mutex = mutex;
-    strncpy(np->ip, ip, OTHER_LENGTH + 1);
-    strncpy(np->name, "NULL", OTHER_LENGTH + 1);
-    return np;
-}
+CLIENTNODE *newClientNode(int sock, char* ip, pthread_mutex_t *mutex);
+POSTNODE *initPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id);
+POSTNODE *addPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id, POSTNODE **now);
+bool removePostNode(POSTNODE **root, POSTNODE **now, int id);
+void getOutput(POSTNODE *root, char buffer[]);
+void client_handler(void *p_client);
+void send_to_all_clients(char tmp_buffer[]);
+void catch_ctrl_c_and_exit(int sig);
+int main(int argc, char* argv[]);
+
 #endif //UDSP_SEMESTRALKA_DISKUSNEPRISPEVKY_SERVER_H

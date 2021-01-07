@@ -63,12 +63,9 @@ void client_handler(void *p_client) {
         strncpy(np->name, nickname, OTHER_LENGTH);
         printf("%s: Používateľ s IP:%s (%s) bol prihlásený na sockete %d.\n", toDate(cas,time(NULL)), np->ip, np->name, np->sock);
         char message[BUFFER_LENGTH];
-        sprintf(message, "Používateľ s IP:%s bol prihlásený.", np->ip);
+        sprintf(message, "Používateľ %s s IP:%s bol prihlásený.", np->name, np->ip);
         pthread_mutex_lock(np->mutex);
-        POSTNODE *post = newPostNode(np->name, message, time(NULL), nowPost->id + 1);
-        post->prev = nowPost;
-        nowPost->next = post;
-        nowPost = post;
+        addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
         pthread_mutex_unlock(np->mutex);
         getOutput(rootPost, send_buffer);
         send_to_all_clients(send_buffer);
@@ -92,22 +89,28 @@ void client_handler(void *p_client) {
                 char message[BUFFER_LENGTH];
                 strcpy(message, strtok(NULL, "\0"));
                 pthread_mutex_lock(np->mutex);
-                // Append linked list for post
-                POSTNODE *post = newPostNode(np->name, message, ts, nowPost->id + 1);
-                post->prev = nowPost;
-                nowPost->next = post;
-                nowPost = post;
+                addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
                 pthread_mutex_unlock(np->mutex);
             } else if (strcmp(command, "del") == 0) {
                 char message[BUFFER_LENGTH];
                 strcpy(message, strtok(NULL, "\0"));
-                long id = atol(message);
-                removePostNode(rootPost, id);
+                long idR = atol(message);
+                if(idR > 0 && removePostNode(&rootPost, &nowPost, idR) == true) {
+                    printf("%s: Správa s id %ld bolá odstránená.\n", toDate(cas,time(NULL)), idR);
+                }
+                getOutput(rootPost, send_buffer);
+                send_to_all_clients(send_buffer);
             }
             getOutput(rootPost, send_buffer);
         } else if (receive == 0 || strcmp(recv_buffer, "exit") == 0) {
             printf("%s: Používateľ s IP:%s (%s) bol odhlásený zo socketu %d.\n", toDate(cas,time(NULL)), np->name, np->ip, np->sock);
-            sprintf(send_buffer, "%s: Používateľ %s s IP:%s bol odhlásený.\n", toDate(cas,time(NULL)), np->name, np->ip);
+            char message[BUFFER_LENGTH];
+            sprintf(send_buffer, "Používateľ %s s IP:%s bol odhlásený.", np->name, np->ip);
+            pthread_mutex_lock(np->mutex);
+            addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
+            pthread_mutex_unlock(np->mutex);
+            getOutput(rootPost, send_buffer);
+            send_to_all_clients(send_buffer);
             leave_flag = 1;
         } else {
             printf("%s: Fatal Error: -1\n", toDate(cas,time(NULL)));
@@ -126,6 +129,68 @@ void client_handler(void *p_client) {
         np->next->prev = np->prev;
     }
     free(np);
+}
+
+POSTNODE *initPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id) {
+    POSTNODE *np = (POSTNODE *)malloc(sizeof(POSTNODE));
+    strncpy(np->userName, userName, OTHER_LENGTH + 1);
+    strncpy(np->message, message, BUFFER_LENGTH + 1);
+    np->prev = NULL;
+    np->next = NULL;
+    np->timestamp = timestamp;
+    np->id = id;
+    return np;
+}
+
+POSTNODE *addPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id, POSTNODE **now) {
+    POSTNODE *np = initPostNode(userName, message, timestamp, id);
+    np->prev = *now;
+    (*now)->next = np;
+    *now = np;
+    return np;
+}
+
+bool removePostNode(POSTNODE **root, POSTNODE **now, int id) {
+    if (id == (*now)->id) {
+        (*now) = (*now)->prev; // remove an edge node
+        free((*now)->next);
+        (*now)->next = NULL;
+        return true;
+    }
+    POSTNODE *np = *root;
+    while (np != NULL) {
+        if (np->id == id) {
+            np->prev->next = np->next;
+            np->next->prev = np->prev;
+            free(np);
+            np = NULL;
+            return true;
+        }
+        np = np->next;
+    }
+    return false;
+}
+
+void getOutput(POSTNODE *root, char buffer[]) {
+    bzero(buffer, BUFFER_LENGTH);
+    char oneline[BUFFER_LENGTH];
+    POSTNODE *tmpPost = root;
+    while (tmpPost != NULL) {
+        sprintf(oneline, "%ld:%ld:%s:%s\n",tmpPost->timestamp, tmpPost->id, tmpPost->userName, tmpPost->message);
+        strcat(buffer, oneline);
+        tmpPost = tmpPost->next;
+    }
+}
+
+CLIENTNODE *newClientNode(int sock, char* ip, pthread_mutex_t *mutex) {
+    CLIENTNODE *np = (CLIENTNODE *)malloc(sizeof(CLIENTNODE));
+    np->sock = sock;
+    np->prev = NULL;
+    np->next = NULL;
+    np->mutex = mutex;
+    strncpy(np->ip, ip, OTHER_LENGTH + 1);
+    strncpy(np->name, "NULL", OTHER_LENGTH + 1);
+    return np;
 }
 
 int main(int argc, char* argv[]) {
@@ -179,7 +244,7 @@ int main(int argc, char* argv[]) {
 
     // Initial linked list for posts
     long ts = time(NULL);
-    rootPost = newPostNode("server", "Miestnosť vytvorená.", ts, 0);
+    rootPost = initPostNode("server", "Miestnosť vytvorená.", ts, 0);
     nowPost = rootPost;
 
     //server caka na pripojenie klientov <sys/socket.h>
