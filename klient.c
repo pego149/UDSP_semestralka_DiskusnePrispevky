@@ -1,18 +1,15 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
-#include "helpers.h"
 
 #include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
+
+#include "klient.h"
 
 // Global variables
 volatile sig_atomic_t flag = 0;
@@ -21,19 +18,68 @@ bool privilege = false;
 
 void catch_ctrl_c_and_exit(int sig) {
     flag = 1;
+    exit(EXIT_SUCCESS);
 }
 
-void catch_ctrl_4_and_menu(int sig) {
-    printf("Stlacila som ctrl 4");
+void str_trim_lf (char* arr, int length) {
+    int i;
+    for (i = 0; i < length; i++) { // trim \n
+        if (arr[i] == '\n') {
+            arr[i] = '\0';
+            break;
+        }
+    }
+}
+
+void str_overwrite_stdout_text(bool privil) {
+    if (privil) {
+        printf("\"del:id\" = vymazanie prispevku\n");
+        printf("\"exit\" = koniec\n");
+    } else {
+        printf("\"exit\" = koniec\n");
+    }
+    printf("\r%s", "> ");
+    fflush(stdout);
 }
 
 void recv_msg_handler() {
-    char receiveMessage[BUFFER_LENGTH] = {};
     while (1) {
+        char receiveMessage[BUFFER_LENGTH] = {};
+        char dateFormated[BUFFER_LENGTH] = {};
+        long id;
+        char username[BUFFER_LENGTH] = {};
+        char message[BUFFER_LENGTH] = {};
+        char buf[BUFFER_LENGTH] = {};
+        int lines = 0;
+
         int receive = recv(sock, receiveMessage, BUFFER_LENGTH, 0);
         if (receive > 0) {
-            printf("\r%s\n", receiveMessage);
-            str_overwrite_stdout();
+            char *ch = receiveMessage;
+            while (*ch != '\0') {
+                if (*ch == '\n') {
+                    lines++;
+                }
+                ch++;
+            }
+
+
+            strncpy(buf, strtok(receiveMessage, ":"), BUFFER_LENGTH);
+
+            for (int i = 0; i < lines; i++) {
+                toDate(dateFormated, atol(buf));
+                id = atol(strtok(NULL, ":"));
+                strncpy(username, strtok(NULL, ":"), BUFFER_LENGTH);
+                strncpy(message, strtok(NULL, "\n"), BUFFER_LENGTH);
+                if (privilege) {
+                    printf("\r%s [%ld]: %s -> %s\n", dateFormated, id, username, message);
+                } else {
+                    printf("\r%s %s -> %s\n", dateFormated, username, message);
+                }
+                if (i < lines-1) {
+                    strncpy(buf, strtok(NULL, ":" ), BUFFER_LENGTH);
+                }
+            }
+            str_overwrite_stdout_text(privilege);
         } else if (receive == 0) {
             break;
         } else {
@@ -47,11 +93,11 @@ void send_msg_handler() {
     char message[BUFFER_LENGTH] = {};
     while (1) {
         strcpy(command, "add:");
-        str_overwrite_stdout();
+        str_overwrite_stdout_text(privilege);
         while (fgets(message, BUFFER_LENGTH, stdin) != NULL) {
             str_trim_lf(message, BUFFER_LENGTH);
             if (strlen(message) == 0) {
-                str_overwrite_stdout();
+                str_overwrite_stdout_text(privilege);
             } else {
                 break;
             }
@@ -89,21 +135,19 @@ int main(int argc, char *argv[]) {
 
     char username[OTHER_LENGTH];
     char password[OTHER_LENGTH];
-    int mainOrQuit = 0;
-    int choice = 0;
-    bool loggedIn = false;
+    int joinOrQuit = 0;
 
     while (1) {
-        printf("1 - Main menu\n2 - Quit\n");
-        scanf("%d", &mainOrQuit);
-        switch (mainOrQuit) {
+        printf("1 - Join discussion\n2 - Quit\n");
+        scanf("%d", &joinOrQuit);
+        switch (joinOrQuit) {
 
             case 1:
                 printf("Login:");
                 scanf("%s", username);
                 if (strlen(username) < 2 || strlen(username) >= OTHER_LENGTH-1) {
-                    printf("\nLogin musí obsahovať aspoň 1 písmeno a musí byť kratšie ako 10 znakov.\n");
-                    exit(EXIT_FAILURE);
+                    printf("\nLogin musí obsahovať aspoň 1 písmeno a musí byť kratšie ako 20 znakov.\n");
+                    break;
                 }
                 if (strncmp(username, "Admin", OTHER_LENGTH) == 0) {
                     printf("Password:");
@@ -116,7 +160,7 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 signal(SIGINT, catch_ctrl_c_and_exit);
-                signal(SIGQUIT, catch_ctrl_4_and_menu);
+                //signal(SIGQUIT, catch_ctrl_4_and_menu);
 
                 //vytvorenie socketu <sys/socket.h>
                 sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -159,148 +203,14 @@ int main(int argc, char *argv[]) {
                         break;
                     }
                 }
-                loggedIn = true;
-/*
-                while (loggedIn) {
-
-                    char text[500];
-                    for (int i = 0; i < sizeof(prispevky); i++) {
-                        printf("%d\n%s %s\n%s\n\n", prispevky[i].getId, prispevky[i].getDatum, prispevky[i].getLogin, prispevky[i].getPrispevok);
-                    }
-
-                    if (privilege) {
-                        int id = 0;
-                        printf("1 - Add prispevok\n2 - Remove prispevok\n3 - Logout");
-                        scanf("%d", &choice);
-                        switch (choice) {
-                            case 1:
-                                PRISPEVOK prispevok;
-                                printf("Zadaj text:");
-                                scanf("%s", &text);
-                                prispevok.text = text;
-                                prispevok.login = login;
-                                prispevok.datum = now();
-                                prispevky.add(&prispevok);
-                                break;
-
-                            case 2:
-                                printf("ID:");
-                                scanf("%d", &id);
-                                for (int i = 0; i < sizeof(prispevky); i++) {
-                                    if (prispevky[i].id == id) {
-                                        prispevky[i].remove();
-                                    }
-                                }
-                                break;
-
-                            case 3:
-                                //uzavretie socketu <unistd.h>
-                                close(sock);
-                                loggedIn = false;
-                                break;
-
-                            default:
-                                printf("Zly vstup. Try again.");
-                        }
-                    } else {
-                        printf("1 - Add prispevok\n2 - Logout");
-                        scanf("%d", &choice);
-                        switch (choice) {
-                            case 1:
-                                PRISPEVOK prispevok;
-                                printf("Zadaj text:");
-                                scanf("%s", &text);
-                                prispevok.text = text;
-                                prispevok.login = login;
-                                prispevok.datum = now();
-                                prispevok.id = nextId();
-                                prispevky.add(&prispevok);
-                                break;
-
-                            case 2:
-                                //uzavretie socketu <unistd.h>
-                                close(sock);
-                                loggedIn = false;
-                                break;
-
-                            default:
-                                printf("Zly vstup. Try again.");
-                        }
-                    }
-                }
-                     */
                 break;
 
             case 2:
                 return (EXIT_SUCCESS);
                 break;
             default:
-                printf("Zly vstup. Try again.");
+                printf("Zly vstup. Try again.\n");
         }
     }
     return 0;
 }
-/*
-int main(int argc, char *argv[]) {
-    signal(SIGINT, catch_ctrl_c_and_exit);
-
-    if (argc < 4) {
-        printError("Klienta je nutne spustit s nasledujucimi argumentmi: adresa port pouzivatel.");
-    }
-
-    //ziskanie adresy a portu servera <netdb.h>
-    struct hostent *server = gethostbyname(argv[1]);
-    if (server == NULL) {
-        printError("Server neexistuje.");
-    }
-    int port = atoi(argv[2]);
-    if (port <= 0) {
-        printError("Port musi byt cele cislo vacsie ako 0.");
-    }
-    char *userName = argv[3];
-
-    //vytvorenie socketu <sys/socket.h>
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        printError("Chyba - socket.");
-    }
-
-    //definovanie adresy servera <arpa/inet.h>
-    struct sockaddr_in serverAddress;
-    bzero((char *)&serverAddress, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, (char *)&serverAddress.sin_addr.s_addr, server->h_length);
-    serverAddress.sin_port = htons(port);
-
-    if (connect(sock,(struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0) {
-        printError("Chyba - connect.");
-    } else {
-        printf("Úspešne pripojené k: %s:%d\n", inet_ntoa(serverAddress.sin_addr), ntohs(serverAddress.sin_port));
-    }
-
-    send(sock, userName, OTHER_LENGTH, 0);
-
-    pthread_t send_msg_thread;
-    if (pthread_create(&send_msg_thread, NULL, (void *) send_msg_handler, NULL) != 0) {
-        printf ("Create pthread error!\n");
-        exit(EXIT_FAILURE);
-    }
-
-    pthread_t recv_msg_thread;
-    if (pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
-        printf ("Create pthread error!\n");
-        exit(EXIT_FAILURE);
-    }
-
-    while (1) {
-        if(flag) {
-            printf("\nBye\n");
-            break;
-        }
-    }
-
-    //uzavretie socketu <unistd.h>
-    close(sock);
-
-    return (EXIT_SUCCESS);
-}*/
