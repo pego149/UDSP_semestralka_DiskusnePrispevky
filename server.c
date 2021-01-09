@@ -48,7 +48,6 @@ void send_to_all_clients(char tmp_buffer[]) {
 }
 
 int client_handler(void *p_client) {
-    int leave_flag = 0;
     char nickname[OTHER_LENGTH] = {};
     char recv_buffer[BUFFER_LENGTH] = {};
     char send_buffer[BUFFER_LENGTH] = {};
@@ -58,7 +57,7 @@ int client_handler(void *p_client) {
     // Prihlasenie
     if (recv(np->sock, nickname, OTHER_LENGTH, 0) <= 0 || strlen(nickname) < 2 || strlen(nickname) >= OTHER_LENGTH-1) {
         printf("%s: Používateľ s IP:%s nemá používateľské meno.\n", toDate(cas,time(NULL)), np->ip);
-        leave_flag = 1;
+        return -1;
     } else {
         strncpy(np->name, nickname, OTHER_LENGTH);
         printf("%s: Používateľ s IP:%s (%s) bol prihlásený na sockete %d.\n", toDate(cas,time(NULL)), np->ip, np->name, np->sock);
@@ -73,9 +72,6 @@ int client_handler(void *p_client) {
 
     // Konverzacia
     while (1) {
-        if (leave_flag) {
-            break;
-        }
         int receive = recv(np->sock, recv_buffer, BUFFER_LENGTH, 0);
         if (receive > 0) {
             if (strlen(recv_buffer) == 0) {
@@ -109,11 +105,10 @@ int client_handler(void *p_client) {
             addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
             getOutput(rootPost, send_buffer);
             pthread_mutex_unlock(np->mutex);
-            send_to_all_clients(send_buffer);
-            leave_flag = 1;
+            break;
         } else {
             printf("%s: Fatal Error: -1\n", toDate(cas,time(NULL)));
-            leave_flag = 1;
+            break;
         }
         send_to_all_clients(send_buffer);
     }
@@ -128,6 +123,7 @@ int client_handler(void *p_client) {
         np->next->prev = np->prev;
     }
     free(np);
+    send_to_all_clients(send_buffer);
     return 0;
 }
 
