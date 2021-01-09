@@ -33,7 +33,7 @@ POSTNODE *initPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENG
 POSTNODE *addPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id, POSTNODE **now);
 bool removePostNode(POSTNODE **root, POSTNODE **now, int id);
 void getOutput(POSTNODE *root, char buffer[]);
-void client_handler(void *p_client);
+int client_handler(void *p_client);
 void send_to_all_clients(char tmp_buffer[]);
 void catch_ctrl_c_and_exit(int sig);
 int main(int argc, char* argv[]);

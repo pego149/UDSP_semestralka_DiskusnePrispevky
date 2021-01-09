@@ -47,7 +47,7 @@ void send_to_all_clients(char tmp_buffer[]) {
     }
 }
 
-void client_handler(void *p_client) {
+int client_handler(void *p_client) {
     int leave_flag = 0;
     char nickname[OTHER_LENGTH] = {};
     char recv_buffer[BUFFER_LENGTH] = {};
@@ -128,6 +128,7 @@ void client_handler(void *p_client) {
         np->next->prev = np->prev;
     }
     free(np);
+    return 0;
 }
 
 POSTNODE *initPostNode(char userName[OTHER_LENGTH + 1], char message[BUFFER_LENGTH + 1], long timestamp, long id) {

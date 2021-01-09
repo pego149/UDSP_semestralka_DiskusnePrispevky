@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "klient.h"
 
@@ -18,6 +19,7 @@ bool privilege = false;
 
 void catch_ctrl_c_and_exit(int sig) {
     flag = 1;
+    close(sock);
     exit(EXIT_SUCCESS);
 }
 
@@ -31,14 +33,12 @@ void str_trim_lf (char* arr, int length) {
     }
 }
 
-void str_overwrite_stdout_text(bool privil) {
-    if (privil) {
-        printf("\"del:id\" = vymazanie prispevku\n");
-        printf("\"exit\" = koniec\n");
+void str_overwrite_stdout_text() {
+    if (privilege) {
+        printf("\r\"del:id\" = vymazanie prispevku, \"exit\" = koniec> ");
     } else {
-        printf("\"exit\" = koniec\n");
+        printf("\r\"exit\" = koniec> ");
     }
-    printf("\r%s", "> ");
     fflush(stdout);
 }
 
@@ -61,8 +61,6 @@ void recv_msg_handler() {
                 }
                 ch++;
             }
-
-
             strncpy(buf, strtok(receiveMessage, ":"), BUFFER_LENGTH);
 
             for (int i = 0; i < lines; i++) {
@@ -79,7 +77,7 @@ void recv_msg_handler() {
                     strncpy(buf, strtok(NULL, ":" ), BUFFER_LENGTH);
                 }
             }
-            str_overwrite_stdout_text(privilege);
+            str_overwrite_stdout_text();
         } else if (receive == 0) {
             break;
         } else {
@@ -93,11 +91,11 @@ void send_msg_handler() {
     char message[BUFFER_LENGTH] = {};
     while (1) {
         strcpy(command, "add:");
-        str_overwrite_stdout_text(privilege);
+        str_overwrite_stdout_text();
         while (fgets(message, BUFFER_LENGTH, stdin) != NULL) {
             str_trim_lf(message, BUFFER_LENGTH);
             if (strlen(message) == 0) {
-                str_overwrite_stdout_text(privilege);
+                str_overwrite_stdout_text();
             } else {
                 break;
             }
@@ -207,10 +205,8 @@ int main(int argc, char *argv[]) {
 
             case 2:
                 return (EXIT_SUCCESS);
-                break;
             default:
                 printf("Zly vstup. Try again.\n");
         }
     }
-    return 0;
 }
