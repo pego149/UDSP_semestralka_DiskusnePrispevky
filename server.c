@@ -12,7 +12,6 @@
 #define CONN_LIMIT 32
 
 // Global variables
-int counter;
 int serverSocket = 0, clientSocket = 0;
 CLIENTNODE *rootClient, *nowClient;
 POSTNODE *rootPost, *nowPost;
@@ -53,6 +52,7 @@ void client_handler(void *p_client) {
     char nickname[OTHER_LENGTH] = {};
     char recv_buffer[BUFFER_LENGTH] = {};
     char send_buffer[BUFFER_LENGTH] = {};
+    char message[BUFFER_LENGTH] = {};
     CLIENTNODE *np = (CLIENTNODE *)p_client;
 
     // Prihlasenie
@@ -66,8 +66,8 @@ void client_handler(void *p_client) {
         sprintf(message, "Používateľ %s s IP:%s bol prihlásený.", np->name, np->ip);
         pthread_mutex_lock(np->mutex);
         addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
-        pthread_mutex_unlock(np->mutex);
         getOutput(rootPost, send_buffer);
+        pthread_mutex_unlock(np->mutex);
         send_to_all_clients(send_buffer);
     }
 
@@ -86,30 +86,29 @@ void client_handler(void *p_client) {
             char command[3];
             strcpy(command, strtok(recv_buffer, ":"));
             if (strcmp(command, "add") == 0) {
-                char message[BUFFER_LENGTH];
                 strcpy(message, strtok(NULL, "\0"));
                 pthread_mutex_lock(np->mutex);
                 addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
                 pthread_mutex_unlock(np->mutex);
             } else if (strcmp(command, "del") == 0) {
-                char message[BUFFER_LENGTH];
                 strcpy(message, strtok(NULL, "\0"));
                 long idR = atol(message);
-                if(idR > 0 && removePostNode(&rootPost, &nowPost, idR) == true) {
+                pthread_mutex_lock(np->mutex);
+                if(idR > 0 && removePostNode(&rootPost, &nowPost, idR)) {
                     printf("%s: Správa s id %ld bolá odstránená.\n", toDate(cas,time(NULL)), idR);
                 }
-                getOutput(rootPost, send_buffer);
-                send_to_all_clients(send_buffer);
+                pthread_mutex_unlock(np->mutex);
             }
+            pthread_mutex_lock(np->mutex);
             getOutput(rootPost, send_buffer);
+            pthread_mutex_unlock(np->mutex);
         } else if (receive == 0 || strcmp(recv_buffer, "exit") == 0) {
             printf("%s: Používateľ s IP:%s (%s) bol odhlásený zo socketu %d.\n", toDate(cas,time(NULL)), np->name, np->ip, np->sock);
-            char message[BUFFER_LENGTH];
-            sprintf(send_buffer, "Používateľ %s s IP:%s bol odhlásený.", np->name, np->ip);
+            sprintf(message, "Používateľ %s s IP:%s bol odhlásený.", np->name, np->ip);
             pthread_mutex_lock(np->mutex);
             addPostNode(np->name, message, time(NULL), nowPost->id + 1, &nowPost);
-            pthread_mutex_unlock(np->mutex);
             getOutput(rootPost, send_buffer);
+            pthread_mutex_unlock(np->mutex);
             send_to_all_clients(send_buffer);
             leave_flag = 1;
         } else {
