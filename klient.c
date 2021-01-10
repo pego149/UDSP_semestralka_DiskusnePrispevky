@@ -19,8 +19,8 @@ bool privilege = false;
 
 void catch_ctrl_c_and_exit(int sig) {
     flag = 1;
+    shutdown(sock, SHUT_RDWR);
     close(sock);
-    exit(EXIT_SUCCESS);
 }
 
 void str_trim_lf (char* arr, int length) {
@@ -42,8 +42,8 @@ void str_overwrite_stdout_text() {
     fflush(stdout);
 }
 
-void recv_msg_handler() {
-    while (1) {
+int recv_msg_handler() {
+    while (flag == 0) {
         char receiveMessage[BUFFER_LENGTH] = {};
         char dateFormated[BUFFER_LENGTH] = {};
         long id;
@@ -84,12 +84,13 @@ void recv_msg_handler() {
             // -1
         }
     }
+    pthread_exit(0);
 }
 
-void send_msg_handler() {
+int send_msg_handler() {
     char command[BUFFER_LENGTH] = {};
     char message[BUFFER_LENGTH] = {};
-    while (1) {
+    while (flag == 0) {
         strcpy(command, "add:");
         str_overwrite_stdout_text();
         while (fgets(message, BUFFER_LENGTH, stdin) != NULL) {
@@ -101,7 +102,7 @@ void send_msg_handler() {
             }
         }
         if (strcmp(message, "exit") == 0) {
-            break;
+            catch_ctrl_c_and_exit(2);
         }
 
         if(strncmp(message, "del:", 4) == 0 && privilege) {
@@ -110,7 +111,7 @@ void send_msg_handler() {
             send(sock, strcat(command, message), BUFFER_LENGTH, 0);
         }
     }
-    catch_ctrl_c_and_exit(2);
+    pthread_exit(0);
 }
 
 int main(int argc, char *argv[]) {
@@ -131,7 +132,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    char username[OTHER_LENGTH];
+    char username[OTHER_LENGTH] = {};
     char password[OTHER_LENGTH];
     int joinOrQuit = 0;
 
@@ -158,7 +159,6 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 signal(SIGINT, catch_ctrl_c_and_exit);
-                //signal(SIGQUIT, catch_ctrl_4_and_menu);
 
                 //vytvorenie socketu <sys/socket.h>
                 sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -188,23 +188,24 @@ int main(int argc, char *argv[]) {
                     printf ("Create pthread error!\n");
                     exit(EXIT_FAILURE);
                 }
+                pthread_detach(send_msg_thread);
 
                 pthread_t recv_msg_thread;
                 if (pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
                     printf ("Create pthread error!\n");
                     exit(EXIT_FAILURE);
                 }
+                pthread_detach(recv_msg_thread);
 
                 while (1) {
                     if(flag) {
                         printf("\nBye\n");
-                        break;
+                        sleep(1);
+                        exit(EXIT_SUCCESS);
                     }
                 }
-                break;
-
             case 2:
-                return (EXIT_SUCCESS);
+                exit(EXIT_SUCCESS);
             default:
                 printf("Zly vstup. Try again.\n");
         }
