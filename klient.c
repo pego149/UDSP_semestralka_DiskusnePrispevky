@@ -9,7 +9,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
-
+#include <openssl/sha.h>
 #include "klient.h"
 
 // Global variables
@@ -114,6 +114,17 @@ int send_msg_handler() {
     pthread_exit(0);
 }
 
+bool testPassword(char passw[]) {
+    unsigned char *d = SHA256(passw, 9, 0);
+    unsigned char hash[SHA256_DIGEST_LENGTH] = {0xe0, 0x72, 0x9d, 0xae, 0x74, 0x19, 0x73, 0x4d, 0x23, 0x53, 0xf9, 0xb7,
+                                                0xc4, 0x04, 0x65, 0xe6, 0x67, 0x85, 0xed, 0x43, 0x72, 0x96, 0x9d, 0xfe,
+                                                0xf3, 0x05, 0xae, 0xa7, 0x2e, 0x0c, 0xd6, 0x62};
+    if (memcmp(d,hash, SHA256_DIGEST_LENGTH) == 0) {
+        return true;
+    }
+    return false;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         printf("Klienta je nutne spustit s nasledujucimi argumentmi: adresa port.");
@@ -151,7 +162,7 @@ int main(int argc, char *argv[]) {
                 if (strncmp(username, "Admin", OTHER_LENGTH) == 0) {
                     printf("Password:");
                     scanf("%s", password);
-                    if (strncmp(password, "jancisima", OTHER_LENGTH) == 0) {
+                    if (testPassword(password)) {
                         privilege = true;
                     } else {
                         printf("Zle heslo, try again n00b!\n");
